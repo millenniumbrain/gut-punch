@@ -1,27 +1,49 @@
-import type { job } from "./types/job_model";
+import type { job_model } from "./types/job_model";
+import { JobRepository } from "./repos/JobRepository";
 
-export class Job implements job {
-  job_id?: number;
-  queue_id?: number;
-  job_name: string;
-  parameters?: string;
-  status!: number;
-  scheduled_time?: string;
-  created_at!: Date;
-  updated_at!: Date;
-  retries!: number;
-  max_retries?: number;
+export type JobHandler = ((parameters: any) => Promise<void>) | ((parameters: any) => void);
 
-  constructor(job: job) {
-    this.job_id = job.job_id;
-    this.queue_id = job.queue_id;
-    this.job_name = job.job_name;
-    this.parameters = job.parameters;
-    this.status = job.status;
-    this.scheduled_time = job.scheduled_time;
-    this.created_at = new Date(job.created_at);
-    this.updated_at = new Date(job.updated_at);
-    this.retries = job.retries;
-    this.max_retries = job.max_retries;
+export class Job {
+  private _job_repository: JobRepository;
+  private jobHandlers: Map<string, JobHandler>;
+
+
+  constructor() {
+    this._job_repository = new JobRepository();
+    this.jobHandlers = new Map();
+  }
+
+  clearHandler(jobName: string): boolean {
+    return this.jobHandlers.delete(jobName);
+  }
+
+  clearAllHandlers(): void {
+    this.jobHandlers.clear();
+  }
+
+
+  registerHandler(jobName: string, handler: JobHandler): boolean {
+    // Wrap non-async functions in a Promise
+    const wrappedHandler = async (parameters: any) => {
+      const result = handler(parameters);
+      // If it's a Promise, await it, if not, it's already done
+      if (result instanceof Promise) {
+        await result;
+      }
+    };
+    try {
+      this.jobHandlers.set(jobName, wrappedHandler);
+    } catch (error: unknown) {
+      return false;
+    }
+    return true;
+  }
+
+
+  async create_job(name: string, parameters: any = {}, handler: JobHandler) {
+    const handler_registered = this.registerHandler(name, handler);
+    if (handler_registered) {
+
+    }
   }
 }

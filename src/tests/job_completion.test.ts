@@ -1,33 +1,38 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import path from 'path';
-import { DatabaseRepository } from '../database';
+import { DatabaseConnection } from '../database_connection';
 import { setup, teardown } from './setup';
 import { GutPunch } from '../gut_punch';
 
 describe('GutPunch Job Completion', () => {
     let gutPunch: GutPunch;
-    let db: DatabaseRepository;
+    let database_connection: DatabaseConnection;
 
     beforeEach(async () => {
         await setup();
-        db = new DatabaseRepository(path.resolve(__dirname, 'gut_punch.db'), false);
-        gutPunch = new GutPunch(db, 1);
+        database_connection = new DatabaseConnection(path.resolve(__dirname, 'gut_punch.db'), false);
+        gutPunch = new GutPunch(database_connection, 1);
+        gutPunch.start();
     });
 
     afterEach(async () => {
         gutPunch.stop();
-        db.close();
-        await teardown();
+        database_connection.close();
+        //await teardown();
     });
 
 
     it('should complete a job successfully', async () => {
         // Create a new job
-        const jobId = await gutPunch.perform_now('test_job', { data: 'test' });
+        const jobId = await gutPunch.perform_now('test_job_easy', { data: 'test' }, function() {
+            setTimeout(() => {
+                console.log("Testing Running Job")
+            }, 1000)
+        });
 
         // Wait for job completion
         const checkJobStatus = async (): Promise<number> => {
-            const result = db.db.prepare('SELECT status FROM jobs WHERE job_id = ?').get(jobId);
+            const result = database_connection.db.prepare('SELECT status FROM jobs WHERE job_id = ?').get(jobId);
             return (result as { status: number }).status;
         };
 

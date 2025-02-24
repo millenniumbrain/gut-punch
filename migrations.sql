@@ -1,6 +1,6 @@
 -- Drop existing tables if they exist
 DROP TABLE IF EXISTS batch_jobs;
-DROP TABLE IF EXISTS batches;
+DROP TABLE IF EXISTS ''batches'';
 DROP TABLE IF EXISTS jobs;
 DROP TABLE IF EXISTS queues;
 
@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS queues (
     queue_id INTEGER PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
     description TEXT,
+    enqueue BOOLEAN NOT NULL  DEFAULT 0 CHECK(enqueue IN (0, 1)),
+    enqueued_at DATETIME
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -24,6 +26,8 @@ CREATE TABLE IF NOT EXISTS jobs (
     parameters TEXT,
     status INTEGER DEFAULT 0,  -- 0: pending, 1: running, 2: retrying, 3: completed, 4: failed, 5: dead
     scheduled_time DATETIME,
+    start_time DATETIME,
+    completion_time DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     retries INTEGER DEFAULT 0,  -- Number of retries attempted
@@ -31,7 +35,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     FOREIGN KEY (queue_id) REFERENCES queues(queue_id)
 );
 
-CREATE TABLE IF NOT EXISTS batches (
+CREATE TABLE IF NOT EXISTS 'batches' (
     batch_id INTEGER PRIMARY KEY,
     queue_id INTEGER NOT NULL,
     batch_name TEXT NOT NULL,
@@ -45,8 +49,17 @@ CREATE TABLE IF NOT EXISTS batches (
 -- Index for efficient retrieval of pending/scheduled jobs
 CREATE INDEX idx_jobs_status_scheduled_time ON jobs (status, scheduled_time);
 
--- Index for efficient retrieval of pending/scheduled batches
-CREATE INDEX idx_batches_status_scheduled_time ON batches (status, scheduled_time);
+-- Index for efficient retrieval of pending/scheduled 'batches'
+CREATE INDEX idx_batches_status_scheduled_time ON 'batches' (status, scheduled_time);
+
+-- Table to link jobs to 'batches' (many-to-many relationship)
+CREATE TABLE IF NOT EXISTS batch_jobs (
+    batch_id INTEGER NOT NULL,
+    job_id INTEGER NOT NULL,
+    FOREIGN KEY (batch_id) REFERENCES 'batches'(batch_id),
+    FOREIGN KEY (job_id) REFERENCES jobs(job_id),
+    PRIMARY KEY (batch_id, job_id) -- Composite key to prevent duplicate entries
+);
 
 -- Trigger to update the updated_at column in jobs table
 CREATE TRIGGER update_job_updated_at
@@ -56,22 +69,15 @@ BEGIN
     UPDATE jobs SET updated_at = CURRENT_TIMESTAMP WHERE job_id = NEW.job_id;
 END;
 
--- Trigger to update the updated_at column in batches table
+-- Trigger to update the updated_at column in 'batches' table
 CREATE TRIGGER update_batch_updated_at
-AFTER UPDATE ON batches
+AFTER UPDATE ON 'batches'
 FOR EACH ROW
 BEGIN
-    UPDATE batches SET updated_at = CURRENT_TIMESTAMP WHERE batch_id = NEW.batch_id;
+    UPDATE 'batches' SET updated_at = CURRENT_TIMESTAMP WHERE batch_id = NEW.batch_id;
 END;
 
--- Table to link jobs to batches (many-to-many relationship)
-CREATE TABLE IF NOT EXISTS batch_jobs (
-    batch_id INTEGER NOT NULL,
-    job_id INTEGER NOT NULL,
-    FOREIGN KEY (batch_id) REFERENCES batches(batch_id),
-    FOREIGN KEY (job_id) REFERENCES jobs(job_id),
-    PRIMARY KEY (batch_id, job_id) -- Composite key to prevent duplicate entries
-);
+
 
 -- Trigger to automatically mark a job as dead if it exceeds max retries
 CREATE TRIGGER mark_job_as_dead
@@ -81,3 +87,14 @@ WHEN NEW.status = 4 AND NEW.retries >= NEW.max_retries AND NEW.max_retries IS NO
 BEGIN
     UPDATE jobs SET status = 5 WHERE job_id = NEW.job_id; -- Set status to 'dead' (5)
 END;
+
+CREATE TRIGGER update_queue_enqueue_at
+AFTER UPDATE OF enqueue ON queues
+WHEN OLD.enqueue <> NEW.enqueue
+BEGIN
+    UPDATE queues SET enqueued_at = CURRENT_TIMESTAMP WHERE queue_id = NEW.queue_id;
+END;
+
+INSERT INTO queues (name, description) VALUES ("default", "Default priority queue for jobs");
+INSERT INTO queues (name, description) VALUES ("high", "High priority queue for jobs");
+INSERT INTO queues (name, description) VALUES ("low", "Low priority queue for jobs");

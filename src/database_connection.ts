@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
 
-export class DatabaseRepository {
+export class DatabaseConnection {
   private _db: Database.Database;
 
   /**
@@ -35,7 +35,7 @@ export class DatabaseRepository {
   /**
    * Inserts a record into the specified table.
    * @param table - The name of the table.
-   * @param data - An object representing the data to be inserted.
+   * @param data - An object containing the data to insert.
    * @returns The ID of the inserted record.
    */
   insert(table: string, data: Record<string, any>): number | bigint {
@@ -43,9 +43,38 @@ export class DatabaseRepository {
     const placeholders = keys.map(() => '?').join(', ');
     const values = Object.values(data);
 
-    const stmt = this._db.prepare(`INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`);
-    const info = stmt.run(...values);
-    return info.lastInsertRowid;
+    try {
+      const stmt = this._db.prepare(
+        `INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`
+      );
+      const info = stmt.run(...values);
+      return info.lastInsertRowid;
+    } catch (error) {
+      console.error(`Failed to insert into ${table}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Selects records from the specified table.
+   * @param table - The name of the table.
+   * @param conditions - Object containing WHERE conditions.
+   * @param single - If true, returns a single record, otherwise returns an array.
+   * @returns A single record or array of records.
+   */
+  select<T = any>(table: string, conditions: Record<string, any> = {}, single: boolean = false): T | T[] {
+    const keys = Object.keys(conditions);
+    const where = keys.length 
+        ? `WHERE ${keys.map(key => `${key} = ?`).join(' AND ')}`
+        : '';
+    const values = Object.values(conditions);
+
+    const stmt = this._db.prepare(`SELECT * FROM ${table} ${where}`);
+    
+    if (single) {
+        return stmt.get(...values) as T;
+    }
+    return stmt.all(...values) as T[];
   }
 
   close(): void {
