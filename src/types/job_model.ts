@@ -1,4 +1,4 @@
-export type job_model = {
+export type JobModel = {
   job_id?: number;
   queue_id?: number;
   job_name: string;

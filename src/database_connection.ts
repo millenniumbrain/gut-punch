@@ -1,5 +1,4 @@
 import Database from 'better-sqlite3';
-import type { job_model } from './types/job_model';
 
 export class DatabaseConnection {
   private _db: Database.Database;

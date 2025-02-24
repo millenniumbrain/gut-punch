@@ -1,7 +1,7 @@
 import { DatabaseConnection } from "./database_connection";
 import { Job } from "./job";
 import type { JobHandler } from "./job";
-import type { job_model } from "./types/job_model";
+import type { JobModel } from "./types/job_model";
 
 export class GutPunch {
     private _databaseConnection: DatabaseConnection;
@@ -22,8 +22,16 @@ export class GutPunch {
         this._job = new Job(databaseConnection)
     }
 
-    async performNow(name: string, handler: JobHandler, parameters: any = {}, ): Promise<job_model | null> {
+    async performNow(name: string, handler: JobHandler, parameters: any = {}): Promise<JobModel | null> {
        return this._job.createJob(name, handler, parameters)
+    }
+
+    async performIn(seconds: number, name: string, handler: JobHandler, parameters: any = {}, options: any) : Promise<JobModel> {
+
+    }
+
+    async performAt(dateTime: Date, name: string, handler: JobHandler, parameters: any = {}, options: any) : Promise<JobModel> {
+
     }
 
     /*
@@ -56,7 +64,7 @@ export class GutPunch {
             `);
             
             const jobRows = stmt.all();
-            const jobs = jobRows.map(row => row as job_model);
+            const jobs = jobRows.map(row => row as JobModel);
             
             for (const job of jobs) {
                 // Check for handler before starting job

@@ -1,19 +1,23 @@
 import { DatabaseConnection } from '../database_connection';
-import type { job_model } from '../types/job_model';
+import type { JobModel } from '../types/job_model';
 import { resolve } from 'node:path';
 
 export class JobRepository {
-    job: job_model | null;
-    jobs: job_model[];
     private _databaseConnection: any;
 
     constructor(databaseConnection: DatabaseConnection) {
         this._databaseConnection = databaseConnection;
-        this.jobs = [];
-        this.job = null;
     }
 
-    async create(job: job_model): Promise<job_model> {
+    getJobs(conditions: Record<string, any>) {
+
+    }
+
+    getSingle(id: number | bigint) {
+
+    }
+
+    async create(job: JobModel): Promise<JobModel> {
         const job_id = this._databaseConnection.insert('jobs', job);
         job.job_id = job_id;
         return job;

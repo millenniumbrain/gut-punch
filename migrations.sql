@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS queues (
 CREATE TABLE IF NOT EXISTS jobs (
     job_id INTEGER PRIMARY KEY,
     queue_id INTEGER,
-    job_name TEXT NOT NULL,
+    job_name TEXT NOT NULL UNIQUE,
     parameters TEXT,
     status INTEGER DEFAULT 0,  -- 0: pending, 1: running, 2: retrying, 3: completed, 4: failed, 5: dead
     scheduled_time DATETIME,

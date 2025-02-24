@@ -1,4 +1,4 @@
-export enum job_status_codes {
+export enum JobStatusCodes {
   PENDING = 0,
   RUNNING = 1,
   RETRYING = 2,

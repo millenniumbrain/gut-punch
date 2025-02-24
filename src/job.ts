@@ -1,19 +1,19 @@
-import type { job_model } from "./types/job_model";
-import { job_status_codes } from "./enums/job_status_codes";
+import type { JobModel } from "./types/job_model";
+import { JobStatusCodes } from "./enums/job_status_codes";
 
 import { JobRepository } from "./repos/job_repository";
 import type { DatabaseConnection } from "./database_connection";
 
 export type JobHandler = ((parameters: any) => Promise<void>) | ((parameters: any) => void);
-export type JobHandlerNoParamteters = (() => Promise<void>) | (() => void);
 
 export class Job {
-  private _job_repository: JobRepository;
-  public jobHandlers: Map<string, JobHandler | JobHandlerNoParamteters>;
+  private _jobRepository: JobRepository;
+
+  public jobHandlers: Map<string, JobHandler>;
 
 
   constructor(databaseConnection: DatabaseConnection) {
-    this._job_repository = new JobRepository(databaseConnection);
+    this._jobRepository = new JobRepository(databaseConnection);
     this.jobHandlers = new Map();
   }
 
@@ -26,7 +26,7 @@ export class Job {
   }
 
 
-  registerHandler(jobName: string, handler: JobHandler | JobHandlerNoParamteters): boolean {
+  registerHandler(jobName: string, handler: JobHandler): boolean {
     // Wrap non-async functions in a Promise
     const wrappedHandler = async (parameters: any) => {
       const result = handler(parameters);
@@ -35,13 +35,15 @@ export class Job {
         await result;
       }
 
-      this._job_repository.update(
+      // once the function runs mark the job as completed,
+      // jobs should have unique names so we can easily match them to their handler
+      this._jobRepository.update(
         {
-          status: job_status_codes.COMPLETED
+          status: JobStatusCodes.COMPLETED
         },
         {
           job_name: jobName,
-          status: job_status_codes.RUNNING
+          status: JobStatusCodes.RUNNING
         }
       )
     };
@@ -54,7 +56,7 @@ export class Job {
   }
 
 
-  async createJob(name: string, handler: JobHandler | JobHandlerNoParamteters, parameters: any = {}) : Promise<job_model | null>  {
+  async createJob(name: string, handler: JobHandler, parameters: any = {}) : Promise<JobModel | null>  {
     const handlerRegistered = this.registerHandler(name, handler);
     let savedJob = null;
     const time = new Date();
@@ -65,8 +67,8 @@ export class Job {
         scheduled_time: time.toISOString(),
         status: 0,
         max_retries: 3
-      } as job_model;
-     savedJob = this._job_repository.create(job);
+      } as JobModel;
+     savedJob = this._jobRepository.create(job);
     }
     return savedJob;
   }
