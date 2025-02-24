@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import type { job_model } from './types/job_model';
 
 export class DatabaseConnection {
   private _db: Database.Database;
@@ -56,25 +57,34 @@ export class DatabaseConnection {
   }
 
   /**
-   * Selects records from the specified table.
-   * @param table - The name of the table.
-   * @param conditions - Object containing WHERE conditions.
-   * @param single - If true, returns a single record, otherwise returns an array.
-   * @returns A single record or array of records.
+   * Updates records in the specified table based on conditions
+   * @param table - The name of the table
+   * @param data - The job model data to update
+   * @param conditions - Object containing WHERE conditions
+   * @returns Number of rows affected
    */
-  select<T = any>(table: string, conditions: Record<string, any> = {}, single: boolean = false): T | T[] {
-    const keys = Object.keys(conditions);
-    const where = keys.length 
-        ? `WHERE ${keys.map(key => `${key} = ?`).join(' AND ')}`
-        : '';
-    const values = Object.values(conditions);
-
-    const stmt = this._db.prepare(`SELECT * FROM ${table} ${where}`);
+  async update(table: string, data: Record<string, any>, conditions: Record<string, any>): Promise<number> {
+    const updateKeys = Object.keys(data).filter(key => data[key] !== undefined);
+    const updateValues = updateKeys.map(key => data[key]);
     
-    if (single) {
-        return stmt.get(...values) as T;
+    const whereKeys = Object.keys(conditions);
+    const whereValues = Object.values(conditions);
+
+    const updateStr = updateKeys.map(key => `${key} = ?`).join(', ');
+    const whereStr = whereKeys.length 
+        ? `WHERE ${whereKeys.map(key => `${key} = ?`).join(' AND ')}`
+        : '';
+
+    try {
+      const stmt = this._db.prepare(
+        `UPDATE ${table} SET ${updateStr} ${whereStr}`
+      );
+      const info = stmt.run(...updateValues, ...whereValues);
+      return info.changes;
+    } catch (error) {
+      console.error(`Failed to update ${table}:`, error);
+      throw error;
     }
-    return stmt.all(...values) as T[];
   }
 
   close(): void {

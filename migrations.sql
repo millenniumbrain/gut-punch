@@ -1,6 +1,6 @@
 -- Drop existing tables if they exist
 DROP TABLE IF EXISTS batch_jobs;
-DROP TABLE IF EXISTS ''batches'';
+DROP TABLE IF EXISTS 'batches';
 DROP TABLE IF EXISTS jobs;
 DROP TABLE IF EXISTS queues;
 
@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS queues (
     queue_id INTEGER PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
     description TEXT,
-    enqueue BOOLEAN NOT NULL  DEFAULT 0 CHECK(enqueue IN (0, 1)),
-    enqueued_at DATETIME
+    enqueue BOOLEAN NOT NULL,
+    enqueued_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -86,13 +86,6 @@ FOR EACH ROW
 WHEN NEW.status = 4 AND NEW.retries >= NEW.max_retries AND NEW.max_retries IS NOT NULL -- Check if status is 'failed' and retries exceed max_retries
 BEGIN
     UPDATE jobs SET status = 5 WHERE job_id = NEW.job_id; -- Set status to 'dead' (5)
-END;
-
-CREATE TRIGGER update_queue_enqueue_at
-AFTER UPDATE OF enqueue ON queues
-WHEN OLD.enqueue <> NEW.enqueue
-BEGIN
-    UPDATE queues SET enqueued_at = CURRENT_TIMESTAMP WHERE queue_id = NEW.queue_id;
 END;
 
 INSERT INTO queues (name, description) VALUES ("default", "Default priority queue for jobs");

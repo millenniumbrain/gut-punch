@@ -18,21 +18,24 @@ describe('GutPunch Job Completion', () => {
     afterEach(async () => {
         gutPunch.stop();
         database_connection.close();
-        //await teardown();
+        await teardown();
     });
+
+    async function sleep(seconds: number) {
+        return new Promise(resolve => setTimeout(resolve, seconds))
+    }
 
 
     it('should complete a job successfully', async () => {
         // Create a new job
-        const jobId = await gutPunch.perform_now('test_job_easy', { data: 'test' }, function() {
-            setTimeout(() => {
-                console.log("Testing Running Job")
-            }, 1000)
-        });
+        const job = await gutPunch.performNow('test_job_easy', async function() {
+            await sleep(1);
+            console.log("Testing Running Job")
+        }, { data: 'test' },);
 
         // Wait for job completion
         const checkJobStatus = async (): Promise<number> => {
-            const result = database_connection.db.prepare('SELECT status FROM jobs WHERE job_id = ?').get(jobId);
+            const result = database_connection.db.prepare('SELECT status FROM jobs WHERE job_id = ?').get(job?.job_id);
             return (result as { status: number }).status;
         };
 
