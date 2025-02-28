@@ -40,7 +40,7 @@ export class Job {
       this._jobRepository.update(
         {
           status: JobStatusCodes.COMPLETED
-        },
+        } as JobModel,
         {
           job_name: jobName,
           status: JobStatusCodes.RUNNING
@@ -56,7 +56,7 @@ export class Job {
   }
 
 
-  async createJob(name: string, handler: JobHandler, parameters: any = {}) : Promise<JobModel | null>  {
+  async create(name: string, handler: JobHandler, parameters: any = {}) : Promise<JobModel | null>  {
     const handlerRegistered = this.registerHandler(name, handler);
     let savedJob = null;
     const time = new Date();

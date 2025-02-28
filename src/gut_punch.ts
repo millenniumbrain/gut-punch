@@ -2,6 +2,9 @@ import { DatabaseConnection } from "./database_connection";
 import { Job } from "./job";
 import type { JobHandler } from "./job";
 import type { JobModel } from "./types/job_model";
+import Time from "./time";
+import { parseDocument, type Document } from "yaml";
+import { readFileSync } from "node:fs" 
 
 export class GutPunch {
     private _databaseConnection: DatabaseConnection;
@@ -11,8 +14,11 @@ export class GutPunch {
     private running_interval_ms: number;
     private interval_function: NodeJS.Timer | null
     private _job: Job;
+    private _config: Document;
 
     constructor(databaseConnection: DatabaseConnection, max_workers: number = 1) {
+        const configFile = readFileSync("./config.yaml", 'utf-8')
+        this._config = parseDocument(configFile)
         this.max_workers = max_workers;
         this.workers = [];
         this.queue = [];
@@ -23,33 +29,18 @@ export class GutPunch {
     }
 
     async performNow(name: string, handler: JobHandler, parameters: any = {}): Promise<JobModel | null> {
-       return this._job.createJob(name, handler, parameters)
+       return this._job.create(name, handler, parameters)
     }
 
-    async performIn(seconds: number, name: string, handler: JobHandler, parameters: any = {}, options: any) : Promise<JobModel> {
-
+    async performIn(time: Time, name: string, handler: JobHandler, parameters: any = {}, options: any) : Promise<JobModel| null> {
+        parameters.scheduled_time = time.toString();
+        return this._job.create(name, handler, parameters)
     }
 
-    async performAt(dateTime: Date, name: string, handler: JobHandler, parameters: any = {}, options: any) : Promise<JobModel> {
-
+    async performAt(time: Time, name: string, handler: JobHandler, parameters: any = {}, options: any) : Promise<JobModel | null> {
+        parameters.scheduled_time = time.toString();
+        return this._job.create(name, handler, parameters)
     }
-
-    /*
-    async performIn(seconds: number, name: string, parameters: any = {}): Promise<number | bigint> {
-
-    }
-
-    async perform_at(time: Date, name: string, parameters: any = {}): Promise<number | bigint> {
-        return this._databaseConnection.insert('jobs', {
-            queue_id: 1, // default queue
-            job_name: name,
-            parameters: JSON.stringify(parameters),
-            scheduled_time: time.toISOString(),
-            status: 0,
-            max_retries: 3
-        });
-    }
-    */
 
     private async run(): Promise<void> {
         try {

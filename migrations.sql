@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS queues (
     queue_id INTEGER PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
     description TEXT,
-    enqueue BOOLEAN NOT NULL,
+    enqueued BOOLEAN NOT NULL DEFAULT 0,
     enqueued_at DATETIME,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     scheduled_time DATETIME,
     start_time DATETIME,
     completion_time DATETIME,
+    recurring BOOLEAN NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     retries INTEGER DEFAULT 0,  -- Number of retries attempted
@@ -78,7 +79,6 @@ BEGIN
 END;
 
 
-
 -- Trigger to automatically mark a job as dead if it exceeds max retries
 CREATE TRIGGER mark_job_as_dead
 AFTER UPDATE ON jobs
@@ -87,7 +87,3 @@ WHEN NEW.status = 4 AND NEW.retries >= NEW.max_retries AND NEW.max_retries IS NO
 BEGIN
     UPDATE jobs SET status = 5 WHERE job_id = NEW.job_id; -- Set status to 'dead' (5)
 END;
-
-INSERT INTO queues (name, description) VALUES ("default", "Default priority queue for jobs");
-INSERT INTO queues (name, description) VALUES ("high", "High priority queue for jobs");
-INSERT INTO queues (name, description) VALUES ("low", "Low priority queue for jobs");

@@ -9,11 +9,27 @@ export async function setup() {
   const migrationsPath = path.resolve(__dirname, '../../migrations.sql');
 
   if (!fs.existsSync(dbPath)) {
-    const db = new Database(dbPath);
-    const migrations = fs.readFileSync(migrationsPath, 'utf-8');
-    db.exec(migrations);
-    db.close();
-    console.log("Database created and migrations applied.");
+    try {
+      const db = new Database(dbPath);
+      const migrations = fs.readFileSync(migrationsPath, 'utf-8');
+      db.exec(migrations);
+      const stmt = db.prepare(`
+        INSERT INTO queues (name, description)
+        SELECT ?, ?
+        WHERE NOT EXISTS (
+          SELECT 1 FROM queues WHERE name = ?
+        )
+      `);
+    
+      stmt.run("high", "High priority queue for jobs", "high");
+      stmt.run("default","Default priority queue for jobs");
+      stmt.run("low", "Low priority queue for jobs");
+      db.close();
+      console.log("Database created and migrations applied.");
+    } catch {
+
+    }
+
   } else {
     console.log("Database already exists.");
   }
@@ -47,9 +63,9 @@ export async function teardown() {
   };
 
   // Delete files in reverse order (WAL, SHM, then main DB)
-  deleteWithRetry(wal);
-  deleteWithRetry(shm);
-  deleteWithRetry(dbPath);
+  //deleteWithRetry(wal);
+  //deleteWithRetry(shm);
+  //deleteWithRetry(dbPath);
 
   console.log("Database cleanup completed");
 }

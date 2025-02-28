@@ -1,0 +1,1165 @@
+This file is a merged representation of a subset of the codebase, containing files not matching ignore patterns, combined into a single document by Repomix.
+
+================================================================
+File Summary
+================================================================
+
+Purpose:
+--------
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+
+File Format:
+------------
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Multiple file entries, each consisting of:
+  a. A separator line (================)
+  b. The file path (File: path/to/file)
+  c. Another separator line
+  d. The full contents of the file
+  e. A blank line
+
+Usage Guidelines:
+-----------------
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+
+Notes:
+------
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching these patterns are excluded: bun.lock, .gitignore
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+
+Additional Info:
+----------------
+
+================================================================
+Directory Structure
+================================================================
+.repomix/bundles.json
+config.yaml
+index.ts
+migrations.sql
+package.json
+README.md
+src/batch.ts
+src/database_connection.ts
+src/enums/job_creation_status_codes.ts
+src/enums/job_status_codes.ts
+src/gut_punch.ts
+src/job.ts
+src/repos/job_repository.ts
+src/repos/queue_repository.ts
+src/tests/job_completion.test.ts
+src/tests/job_repository.test.ts
+src/tests/setup.ts
+src/time.ts
+src/types/job_model.ts
+src/types/queue_model.ts
+tsconfig.json
+vitest.config.ts
+
+================================================================
+Files
+================================================================
+
+================
+File: .repomix/bundles.json
+================
+{
+  "bundles": {}
+}
+
+================
+File: config.yaml
+================
+:concurrency: 5
+staging:
+  :concurrency: 10
+production:
+  :concurrency: 10
+:queues:
+  - critical
+  - default
+  - low
+
+================
+File: index.ts
+================
+console.log("Hello via Bun!");
+
+================
+File: migrations.sql
+================
+-- Drop existing tables if they exist
+DROP TABLE IF EXISTS batch_jobs;
+DROP TABLE IF EXISTS 'batches';
+DROP TABLE IF EXISTS jobs;
+DROP TABLE IF EXISTS queues;
+
+-- Drop existing triggers if they exist
+DROP TRIGGER IF EXISTS update_job_updated_at;
+DROP TRIGGER IF EXISTS update_batch_updated_at;
+DROP TRIGGER IF EXISTS mark_job_as_dead;
+
+-- Create tables
+CREATE TABLE IF NOT EXISTS queues (
+    queue_id INTEGER PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL,
+    description TEXT,
+    enqueued BOOLEAN NOT NULL DEFAULT 0,
+    enqueued_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS jobs (
+    job_id INTEGER PRIMARY KEY,
+    queue_id INTEGER,
+    job_name TEXT NOT NULL UNIQUE,
+    parameters TEXT,
+    status INTEGER DEFAULT 0,  -- 0: pending, 1: running, 2: retrying, 3: completed, 4: failed, 5: dead
+    scheduled_time DATETIME,
+    start_time DATETIME,
+    completion_time DATETIME,
+    recurring BOOLEAN NOT NULL DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    retries INTEGER DEFAULT 0,  -- Number of retries attempted
+    max_retries INTEGER,      -- Maximum number of retries allowed (can be NULL)
+    FOREIGN KEY (queue_id) REFERENCES queues(queue_id)
+);
+
+CREATE TABLE IF NOT EXISTS 'batches' (
+    batch_id INTEGER PRIMARY KEY,
+    queue_id INTEGER NOT NULL,
+    batch_name TEXT NOT NULL,
+    status INTEGER DEFAULT 0,  -- Same status codes as jobs table
+    scheduled_time DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (queue_id) REFERENCES queues(queue_id)
+);
+
+-- Index for efficient retrieval of pending/scheduled jobs
+CREATE INDEX idx_jobs_status_scheduled_time ON jobs (status, scheduled_time);
+
+-- Index for efficient retrieval of pending/scheduled 'batches'
+CREATE INDEX idx_batches_status_scheduled_time ON 'batches' (status, scheduled_time);
+
+-- Table to link jobs to 'batches' (many-to-many relationship)
+CREATE TABLE IF NOT EXISTS batch_jobs (
+    batch_id INTEGER NOT NULL,
+    job_id INTEGER NOT NULL,
+    FOREIGN KEY (batch_id) REFERENCES 'batches'(batch_id),
+    FOREIGN KEY (job_id) REFERENCES jobs(job_id),
+    PRIMARY KEY (batch_id, job_id) -- Composite key to prevent duplicate entries
+);
+
+-- Trigger to update the updated_at column in jobs table
+CREATE TRIGGER update_job_updated_at
+AFTER UPDATE ON jobs
+FOR EACH ROW
+BEGIN
+    UPDATE jobs SET updated_at = CURRENT_TIMESTAMP WHERE job_id = NEW.job_id;
+END;
+
+-- Trigger to update the updated_at column in 'batches' table
+CREATE TRIGGER update_batch_updated_at
+AFTER UPDATE ON 'batches'
+FOR EACH ROW
+BEGIN
+    UPDATE 'batches' SET updated_at = CURRENT_TIMESTAMP WHERE batch_id = NEW.batch_id;
+END;
+
+
+-- Trigger to automatically mark a job as dead if it exceeds max retries
+CREATE TRIGGER mark_job_as_dead
+AFTER UPDATE ON jobs
+FOR EACH ROW
+WHEN NEW.status = 4 AND NEW.retries >= NEW.max_retries AND NEW.max_retries IS NOT NULL -- Check if status is 'failed' and retries exceed max_retries
+BEGIN
+    UPDATE jobs SET status = 5 WHERE job_id = NEW.job_id; -- Set status to 'dead' (5)
+END;
+
+================
+File: package.json
+================
+{
+  "name": "gut-punch",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "better-sqlite3": "^11.8.1",
+    "vitest": "^3.0.6",
+    "yaml": "^2.7.0"
+  }
+}
+
+================
+File: README.md
+================
+# gut-punch
+
+To install dependencies:
+
+```bash
+bun install
+```
+
+To run:
+
+```bash
+bun run index.ts
+```
+
+This project was created using `bun init` in bun v1.2.2. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.
+
+================
+File: src/batch.ts
+================
+class BatchReposiory {
+  
+}
+
+================
+File: src/database_connection.ts
+================
+import Database from 'better-sqlite3';
+
+export class DatabaseConnection {
+  private _db: Database.Database;
+
+  /**
+   * Initializes the database connection and sets up the schema.
+   * @param dbFilePath - The file path to the SQLite database.
+   */
+  constructor(dbFilePath: string, logging: boolean = true) {
+    try {
+      // Establish a connection to the SQLite database.
+      if (logging) {
+        this._db = new Database(dbFilePath, {
+          verbose: console.log
+        });
+      } else {
+        this._db = new Database(dbFilePath);
+      }
+      // Enable foreign key constraints if needed.
+      this._db.pragma('foreign_keys = ON');
+      this._db.pragma('journal_mode = WAL');
+      // Initialize the database schema.
+      
+    } catch (error) {
+      console.error('Failed to connect to the database:', error);
+      throw error;
+    }
+  }
+
+  get db(): Database.Database {
+    return this._db;
+  }
+
+  /**
+   * Inserts a record into the specified table.
+   * @param table - The name of the table.
+   * @param data - An object containing the data to insert.
+   * @returns The ID of the inserted record.
+   */
+  insert(table: string, data: Record<string, any>): number | bigint {
+    const keys = Object.keys(data);
+    const placeholders = keys.map(() => '?').join(', ');
+    const values = Object.values(data);
+
+    try {
+      const stmt = this._db.prepare(
+        `INSERT INTO ${table} (${keys.join(', ')}) VALUES (${placeholders})`
+      );
+      const info = stmt.run(...values);
+      return info.lastInsertRowid;
+    } catch (error) {
+      console.error(`Failed to insert into ${table}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Updates records in the specified table based on conditions
+   * @param table - The name of the table
+   * @param data - The job model data to update
+   * @param conditions - Object containing WHERE conditions
+   * @returns Number of rows affected
+   */
+  async update(table: string, data: Record<string, any>, conditions: Record<string, any>): Promise<number> {
+    const updateKeys = Object.keys(data).filter(key => data[key] !== undefined);
+    const updateValues = updateKeys.map(key => data[key]);
+    
+    const whereKeys = Object.keys(conditions);
+    const whereValues = Object.values(conditions);
+
+    const updateStr = updateKeys.map(key => `${key} = ?`).join(', ');
+    const whereStr = whereKeys.length 
+        ? `WHERE ${whereKeys.map(key => `${key} = ?`).join(' AND ')}`
+        : '';
+
+    try {
+      const stmt = this._db.prepare(
+        `UPDATE ${table} SET ${updateStr} ${whereStr}`
+      );
+      const info = stmt.run(...updateValues, ...whereValues);
+      return info.changes;
+    } catch (error) {
+      console.error(`Failed to update ${table}:`, error);
+      throw error;
+    }
+  }
+
+  close(): void {
+    if (this._db) {
+      this._db.close();
+    }
+  }
+}
+
+================
+File: src/enums/job_creation_status_codes.ts
+================
+export enum job_creation_status_codes {
+  CREATED = 1,
+  UPDATED = 2,
+  DELETED = 3,
+  ERROR = -1,
+}
+
+================
+File: src/enums/job_status_codes.ts
+================
+export enum JobStatusCodes {
+  PENDING = 0,
+  RUNNING = 1,
+  RETRYING = 2,
+  COMPLETED = 3,
+  FAILED = 4,
+  DEAD = 5
+}
+
+================
+File: src/gut_punch.ts
+================
+import { DatabaseConnection } from "./database_connection";
+import { Job } from "./job";
+import type { JobHandler } from "./job";
+import type { JobModel } from "./types/job_model";
+import type Time from "./time";
+
+export class GutPunch {
+    private _databaseConnection: DatabaseConnection;
+    private workers: any[];
+    private max_workers: number;
+    private queue: any[];
+    private running_interval_ms: number;
+    private interval_function: NodeJS.Timer | null
+    private _job: Job;
+
+    constructor(databaseConnection: DatabaseConnection, max_workers: number = 1) {
+        this.max_workers = max_workers;
+        this.workers = [];
+        this.queue = [];
+        this.running_interval_ms = 3000;
+        this._databaseConnection = databaseConnection;
+        this.interval_function = null;
+        this._job = new Job(databaseConnection)
+    }
+
+    async performNow(name: string, handler: JobHandler, parameters: any = {}): Promise<JobModel | null> {
+       return this._job.create(name, handler, parameters)
+    }
+
+    async performIn(seconds: number, name: string, handler: JobHandler, parameters: any = {}, options: any) : Promise<JobModel> {
+
+    }
+
+    async performAt(time: Time, name: string, handler: JobHandler, parameters: any = {}, options: any) : Promise<JobModel> {
+
+    }
+
+    private async run(): Promise<void> {
+        try {
+            // sqlite doesn't support datetime comparison on utc strings with timezone
+            // so we have to extract the first 19 characters to compare
+            const stmt = this._databaseConnection.db.prepare(`
+                SELECT * FROM jobs 
+                WHERE datetime(substr(scheduled_time, 1, 19)) <= datetime('now')
+                AND retries < 3
+                AND status = 0 
+                ORDER BY scheduled_time ASC
+            `);
+            
+            const jobRows = stmt.all();
+            const jobs = jobRows.map(row => row as JobModel);
+            
+            for (const job of jobs) {
+                // Check for handler before starting job
+                const handler = this._job.jobHandlers.get(job.job_name);
+                if (!handler) {
+                    // Update job status to failed with error message
+                    this._databaseConnection.db.prepare(`
+                        UPDATE jobs 
+                        SET status = 4, 
+                            retries = retries + 1,
+                            parameters = json_set(COALESCE(parameters, '{}'), '$.error', ?)
+                        WHERE job_id = ?
+                    `).run(JSON.stringify(`No handler registered for job type: ${job.job_name}`), job.job_id);
+                    
+                    console.error(`No handler registered for job type: ${job.job_name}`);
+                    continue;  // Skip to next job
+                }
+
+                try {
+                    // Update job status to running
+                    this._databaseConnection.db.prepare(`
+                        UPDATE jobs SET status = 1 WHERE job_id = ?
+                    `).run(job.job_id);
+
+                    // Execute the job handler
+                    const parameters = job.parameters ? JSON.parse(job.parameters) : {};
+                    await handler(parameters);
+
+                } catch (error: unknown) {
+                    // Update job status to failed and increment retries
+                    this._databaseConnection.db.prepare(`
+                        UPDATE jobs 
+                        SET status = 4, 
+                            retries = retries + 1,
+                            parameters = json_set(COALESCE(parameters, '{}'), '$.error', ?)
+                        WHERE job_id = ?';
+                    `).run(JSON.stringify(error), job.job_id);
+                    
+                    console.error(`Failed to process job ${job.job_id}:`, error);
+                }
+            }
+        } catch (error) {
+            console.error('Error in run loop:', error);
+        }
+    }
+
+    start(): void {
+        this.interval_function = setInterval(() => this.run(), this.running_interval_ms);   
+    }
+
+    stop(): void {
+        if (this.interval_function) {
+            clearInterval(this.interval_function);
+        }
+        this._databaseConnection.close();
+    }
+}
+
+================
+File: src/job.ts
+================
+import type { JobModel } from "./types/job_model";
+import { JobStatusCodes } from "./enums/job_status_codes";
+
+import { JobRepository } from "./repos/job_repository";
+import type { DatabaseConnection } from "./database_connection";
+
+export type JobHandler = ((parameters: any) => Promise<void>) | ((parameters: any) => void);
+
+export class Job {
+  private _jobRepository: JobRepository;
+
+  public jobHandlers: Map<string, JobHandler>;
+
+
+  constructor(databaseConnection: DatabaseConnection) {
+    this._jobRepository = new JobRepository(databaseConnection);
+    this.jobHandlers = new Map();
+  }
+
+  clearHandler(jobName: string): boolean {
+    return this.jobHandlers.delete(jobName);
+  }
+
+  clearAllHandlers(): void {
+    this.jobHandlers.clear();
+  }
+
+
+  registerHandler(jobName: string, handler: JobHandler): boolean {
+    // Wrap non-async functions in a Promise
+    const wrappedHandler = async (parameters: any) => {
+      const result = handler(parameters);
+      // If it's a Promise, await it, if not, it's already done
+      if (result instanceof Promise) {
+        await result;
+      }
+
+      // once the function runs mark the job as completed,
+      // jobs should have unique names so we can easily match them to their handler
+      this._jobRepository.update(
+        {
+          status: JobStatusCodes.COMPLETED
+        } as JobModel,
+        {
+          job_name: jobName,
+          status: JobStatusCodes.RUNNING
+        }
+      )
+    };
+    try {
+      this.jobHandlers.set(jobName, wrappedHandler);
+    } catch (error: unknown) {
+      return false;
+    }
+    return true;
+  }
+
+
+  async create(name: string, handler: JobHandler, parameters: any = {}) : Promise<JobModel | null>  {
+    const handlerRegistered = this.registerHandler(name, handler);
+    let savedJob = null;
+    const time = new Date();
+    if (handlerRegistered) {
+      const job = {
+        job_name: name,
+        parameters: JSON.stringify(parameters),
+        scheduled_time: time.toISOString(),
+        status: 0,
+        max_retries: 3
+      } as JobModel;
+     savedJob = this._jobRepository.create(job);
+    }
+    return savedJob;
+  }
+}
+
+================
+File: src/repos/job_repository.ts
+================
+import { DatabaseConnection } from '../database_connection';
+import type { JobModel } from '../types/job_model';
+import { JobStatusCodes } from '../enums/job_status_codes';
+
+export class JobRepository {
+  private readonly _dbConnection: DatabaseConnection;
+
+  constructor(dbConnection: DatabaseConnection) {
+    this._dbConnection = dbConnection;
+  }
+
+  async getJobs(conditions: Record<string, any>): Promise<JobModel[]> {
+    const whereClause = Object.keys(conditions)
+      .map((key) => `${key} = ?`)
+      .join(' AND ');
+    const values = Object.values(conditions);
+
+    try {
+      const stmt = this._dbConnection.db.prepare(`SELECT * FROM jobs ${whereClause ? `WHERE ${whereClause}` : ''}`);
+      const rows = stmt.all(...values);
+      return rows as JobModel[];
+    } catch (error) {
+      console.error('Error fetching jobs:', error);
+      throw error; // Rethrow or handle as needed
+    }
+  }
+
+  async getSingle(id: number | bigint): Promise<JobModel | null> {
+    try {
+      const stmt = this._dbConnection.db.prepare('SELECT * FROM jobs WHERE job_id = ?');
+      const row = stmt.get(id);
+      return row ? (row as JobModel) : null;
+    } catch (error) {
+      console.error(`Error fetching job with ID ${id}:`, error);
+      throw error;
+    }
+  }
+
+  async create(job: JobModel): Promise<JobModel> {
+    const now = new Date();
+    const jobWithTimestamps = { ...job, created_at: now.toISOString(), updated_at: now.toISOString() };
+
+    try {
+      const jobId = this._dbConnection.insert('jobs', jobWithTimestamps);
+      return { ...jobWithTimestamps, job_id: jobId };
+    } catch (error) {
+      console.error('Error creating job:', error);
+      throw error;
+    }
+  }
+
+  async update(
+    data: Partial<Omit<JobModel, 'job_id' | 'created_at' | 'updated_at'>>,
+    conditions: Record<string, any>
+  ): Promise<number> {
+    const updateKeys = Object.keys(data);
+    const updateValues = updateKeys.map((key) => (data as Record<string, any>)[key]);
+
+    const whereKeys = Object.keys(conditions);
+    const whereValues = Object.values(conditions);
+
+    const updateStr = updateKeys.map((key) => `${key} = ?`).join(', ');
+    const whereStr = whereKeys.length ? `WHERE ${whereKeys.map((key) => `${key} = ?`).join(' AND ')}` : '';
+
+    try {
+      const stmt = this._dbConnection.db.prepare(`UPDATE jobs SET ${updateStr}, updated_at = CURRENT_TIMESTAMP ${whereStr}`);
+      const info = stmt.run(...updateValues, ...whereValues);
+      return info.changes;
+    } catch (error) {
+      console.error('Error updating jobs:', error);
+      throw error;
+    }
+  }
+
+  async markJobCompleted(jobId: number | bigint): Promise<number> {
+    return this.update({ status: JobStatusCodes.COMPLETED } as JobModel, { job_id: jobId });
+  }
+
+  async markJobFailed(jobId: number | bigint, error: any): Promise<number> {
+      const errorString = JSON.stringify(error);
+      return this.update({ status: JobStatusCodes.FAILED, parameters: JSON.stringify({error: errorString}) } as JobModel, {job_id: jobId})
+  }
+
+  async markJobRunning(jobId: number | bigint): Promise<number> {
+    return this.update({ status: JobStatusCodes.RUNNING } as JobModel, { job_id: jobId });
+  }
+
+  async incrementJobRetries(jobId: number | bigint): Promise<number> {
+    try {
+      const stmt = this._dbConnection.db.prepare('UPDATE jobs SET retries = retries + 1, updated_at = CURRENT_TIMESTAMP WHERE job_id = ?');
+      const info = stmt.run(jobId);
+      return info.changes;
+    } catch (error) {
+      console.error('Error incrementing job retries:', error);
+      throw error;
+    }
+  }
+
+  async markJobDead(jobId: number | bigint): Promise<number> {
+      return this.update({status: JobStatusCodes.DEAD} as JobModel, {job_id: jobId})
+  }
+
+}
+
+================
+File: src/repos/queue_repository.ts
+================
+import { DatabaseConnection } from '../database_connection';
+import type { QueueModel } from '../types/queue_model';
+
+export class QueueRepository {
+  private readonly _dbConnection: DatabaseConnection;
+
+  constructor(dbConnection: DatabaseConnection) {
+    this._dbConnection = dbConnection;
+  }
+
+  async getQueues(conditions: Record<string, any>): Promise<QueueModel[]> {
+    const whereClause = Object.keys(conditions)
+      .map((key) => `${key} = ?`)
+      .join(' AND ');
+    const values = Object.values(conditions);
+
+    try {
+      const stmt = this._dbConnection.db.prepare(`SELECT * FROM queues ${whereClause ? `WHERE ${whereClause}` : ''}`);
+      const rows = stmt.all(...values);
+      return rows as QueueModel[];
+    } catch (error) {
+      console.error('Error fetching queues:', error);
+      throw error;
+    }
+  }
+
+  async getSingle(id: number | bigint): Promise<QueueModel | null> {
+    try {
+      const stmt = this._dbConnection.db.prepare('SELECT * FROM queues WHERE queue_id = ?');
+      const row = stmt.get(id);
+      return row ? (row as QueueModel) : null;
+    } catch (error) {
+      console.error(`Error fetching queue with ID ${id}:`, error);
+      throw error;
+    }
+  }
+
+  async create(queue: Omit<QueueModel, 'queue_id' | 'created_at'>): Promise<QueueModel> {
+    const now = new Date();
+    const queueWithTimestamps = { ...queue, created_at: now.toISOString() };
+
+    try {
+      const queueId = this._dbConnection.insert('queues', queueWithTimestamps);
+      return { ...queueWithTimestamps, queue_id: queueId } as QueueModel;
+    } catch (error) {
+      console.error('Error creating queue:', error);
+      throw error;
+    }
+  }
+
+  async update(
+    data: Partial<Omit<QueueModel, 'queue_id' | 'created_at'>>,
+    conditions: Record<string, any>
+  ): Promise<number> {
+    const updateKeys = Object.keys(data);
+    const updateValues = updateKeys.map((key) => data[key as keyof typeof data]);
+
+    const whereKeys = Object.keys(conditions);
+    const whereValues = Object.values(conditions);
+
+    const updateStr = updateKeys.map((key) => `${key} = ?`).join(', ');
+    const whereStr = whereKeys.length ? `WHERE ${whereKeys.map((key) => `${key} = ?`).join(' AND ')}` : '';
+
+    try {
+      const stmt = this._dbConnection.db.prepare(`UPDATE queues SET ${updateStr} ${whereStr}`);
+      const info = stmt.run(...updateValues, ...whereValues);
+      return info.changes;
+    } catch (error) {
+      console.error('Error updating queues:', error);
+      throw error;
+    }
+  }
+
+  async delete(id: number | bigint): Promise<number> {
+    try {
+      const stmt = this._dbConnection.db.prepare('DELETE FROM queues WHERE queue_id = ?');
+      const info = stmt.run(id);
+      return info.changes;
+    } catch (error) {
+      console.error(`Error deleting queue with ID ${id}:`, error);
+      throw error;
+    }
+  }
+}
+
+================
+File: src/tests/job_completion.test.ts
+================
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import path from 'path';
+import { DatabaseConnection } from '../database_connection';
+import { setup, teardown } from './setup';
+import { GutPunch } from '../gut_punch';
+
+describe('GutPunch Job Completion', () => {
+    let gutPunch: GutPunch;
+    let database_connection: DatabaseConnection;
+
+    beforeEach(async () => {
+        await setup();
+        database_connection = new DatabaseConnection(path.resolve(__dirname, 'gut_punch.db'), false);
+        gutPunch = new GutPunch(database_connection, 1);
+        gutPunch.start();
+    });
+
+    afterEach(async () => {
+        gutPunch.stop();
+        database_connection.close();
+        await teardown();
+    });
+
+    async function sleep(seconds: number) {
+        return new Promise(resolve => setTimeout(resolve, seconds))
+    }
+
+
+    it('should complete a job successfully', async () => {
+        // Create a new job
+        const job = await gutPunch.performNow('test_job_easy', async function() {
+            await sleep(1);
+            console.log("Testing Running Job")
+        }, { data: 'test' },);
+
+        // Wait for job completion
+        const checkJobStatus = async (): Promise<number> => {
+            const result = database_connection.db.prepare('SELECT status FROM jobs WHERE job_id = ?').get(job?.job_id);
+            return (result as { status: number }).status;
+        };
+
+        // Poll job status until completed or timeout
+        const timeout = 10000; // 10 seconds
+        const startTime = Date.now();
+        let status: number;
+
+        while (true) {
+            status = await checkJobStatus();
+            
+            // Check if job completed successfully
+            if (status === 3) {
+                break;
+            }
+
+            // Check if job failed or died
+            if (status === 4 || status === 5) {
+                throw new Error(`Job failed with status ${status}`);
+            }
+
+            // Check for timeout
+            if (Date.now() - startTime > timeout) {
+                throw new Error('Job execution timed out');
+            }
+
+            // Wait before checking again
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+
+        expect(status).toBe(3); // 3 = completed
+    }, 15000); // Set test timeout to 15 seconds
+});
+
+================
+File: src/tests/job_repository.test.ts
+================
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import path from 'path';
+import { DatabaseConnection } from '../database_connection';
+import { JobRepository } from '../repos/job_repository';
+import { JobStatusCodes } from '../enums/job_status_codes';
+import { setup, teardown } from './setup';
+import type { JobModel } from '../types/job_model';
+
+describe('Job Repository Tests', () => {
+  let dbConnection: DatabaseConnection;
+  let jobRepository: JobRepository;
+
+  beforeEach(async () => {
+    await setup();
+    dbConnection = new DatabaseConnection(path.resolve(__dirname, 'gut_punch.db'));
+    jobRepository = new JobRepository(dbConnection);
+  });
+
+  afterEach(async () => {
+    dbConnection.close();
+    await teardown();
+  });
+
+  it('should create a job', async () => {
+    const newJob: Omit<JobModel, 'job_id' | 'created_at' | 'updated_at'> = {
+      queue_id: 1,
+      job_name: 'test_job',
+      parameters: JSON.stringify({ data: 'test data' }),
+      status: JobStatusCodes.PENDING,
+      scheduled_time: new Date().toISOString(),
+      max_retries: 3,
+      retries: 0,
+    };
+    const createdJob = await jobRepository.create({
+      ...newJob
+    });
+    expect(createdJob).toBeDefined();
+    expect(createdJob.job_name).toBe('test_job');
+
+    const fetchedJob = await jobRepository.getSingle(createdJob.job_id!);
+    expect(fetchedJob).toBeDefined();
+    expect(fetchedJob!.job_name).toBe('test_job');
+  });
+
+  it('should update a job', async () => {
+    const newJob: Omit<JobModel, 'job_id' | 'created_at' | 'updated_at'> = {
+      queue_id: 1,
+      job_name: 'update_job',
+      parameters: JSON.stringify({ data: 'initial data' }),
+      status: JobStatusCodes.PENDING,
+      scheduled_time: new Date().toISOString(),
+      max_retries: 3,
+      retries: 0,
+    };
+    const createdJob = await jobRepository.create(newJob);
+
+    await jobRepository.update({ parameters: JSON.stringify({ data: 'updated data' }) }, { job_id: createdJob.job_id! });
+    const updatedJob = await jobRepository.getSingle(createdJob.job_id!);
+    expect(JSON.parse(updatedJob!.parameters!).data).toBe('updated data');
+  });
+
+  it('should get jobs by conditions', async () => {
+    const newJob: Omit<JobModel, 'job_id' | 'created_at' | 'updated_at'> = {
+      queue_id: 1,
+      job_name: 'get_jobs_job',
+      parameters: JSON.stringify({ data: 'data' }),
+      status: JobStatusCodes.PENDING,
+      scheduled_time: new Date().toISOString(),
+      max_retries: 3,
+      retries: 0,
+    };
+    await jobRepository.create(newJob);
+
+    const jobs = await jobRepository.getJobs({ status: JobStatusCodes.PENDING });
+    expect(jobs).toBeDefined();
+    expect(jobs.length).toBeGreaterThan(0);
+  });
+
+  it('should mark job completed', async () => {
+    const newJob: Omit<JobModel, 'job_id' | 'created_at' | 'updated_at'> = {
+      queue_id: 1,
+      job_name: 'complete_job',
+      parameters: JSON.stringify({ data: 'data' }),
+      status: JobStatusCodes.PENDING,
+      scheduled_time: new Date().toISOString(),
+      max_retries: 3,
+      retries: 0,
+    };
+    const createdJob = await jobRepository.create(newJob);
+
+    await jobRepository.markJobCompleted(createdJob.job_id!);
+    const completedJob = await jobRepository.getSingle(createdJob.job_id!);
+    expect(completedJob!.status).toBe(JobStatusCodes.COMPLETED);
+  });
+});
+
+================
+File: src/tests/setup.ts
+================
+import Database from 'better-sqlite3';
+import fs from 'fs';
+import path from 'path';
+
+export async function setup() {
+  console.log("Setup");
+
+  const dbPath = path.resolve(__dirname, 'gut_punch.db');
+  const migrationsPath = path.resolve(__dirname, '../../migrations.sql');
+
+  if (!fs.existsSync(dbPath)) {
+    try {
+      const db = new Database(dbPath);
+      const migrations = fs.readFileSync(migrationsPath, 'utf-8');
+      db.exec(migrations);
+      const stmt = db.prepare(`
+        INSERT INTO queues (name, description)
+        SELECT ?, ?
+        WHERE NOT EXISTS (
+          SELECT 1 FROM queues WHERE name = ?
+        )
+      `);
+    
+      stmt.run("high", "High priority queue for jobs", "high");
+      stmt.run("default","Default priority queue for jobs");
+      stmt.run("low", "Low priority queue for jobs");
+      db.close();
+      console.log("Database created and migrations applied.");
+    } catch {
+
+    }
+
+  } else {
+    console.log("Database already exists.");
+  }
+}
+
+export async function teardown() {
+  console.log("Teardown");
+  const dbPath = path.resolve(__dirname, 'gut_punch.db');
+  const shm = path.resolve(__dirname, 'gut_punch.db-shm');
+  const wal = path.resolve(__dirname, 'gut_punch.db-wal');
+
+  const deleteWithRetry = (filePath: string, maxRetries: number = 3) => {
+    let retries = 0;
+    while (retries < maxRetries) {
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          console.log(`Deleted ${filePath}`);
+          return true;
+        }
+        return true;
+      } catch (error: any) {
+        retries++;
+        if (retries === maxRetries) {
+          console.error(`Failed to delete ${filePath} after ${maxRetries} attempts:`, error);
+          return false;
+        }
+      }
+    }
+    return false;
+  };
+
+  // Delete files in reverse order (WAL, SHM, then main DB)
+  //deleteWithRetry(wal);
+  //deleteWithRetry(shm);
+  //deleteWithRetry(dbPath);
+
+  console.log("Database cleanup completed");
+}
+
+================
+File: src/time.ts
+================
+export default class Time {
+  private _date: Date;
+  constructor(date = new Date()) {
+      // Create a new Date object from the input or use current date if none provided
+      this._date = new Date(date);
+  }
+
+  // Add hours to the date
+  addHours(num: number): Date {
+      const newDate = new Date(this._date);
+      newDate.setHours(newDate.getHours() + num);
+      return newDate;
+  }
+
+  // Add minutes to the date
+  addMinutes(num: number): Date {
+      const newDate = new Date(this._date);
+      newDate.setMinutes(newDate.getMinutes() + num);
+      return newDate;
+  }
+
+  // Add seconds to the date
+  addSeconds(num: number): Date {
+      const newDate = new Date(this._date);
+      newDate.setSeconds(newDate.getSeconds() + num);
+      return newDate;
+  }
+
+  // Add days to the date
+  addDays(num: number): Date {
+      const newDate = new Date(this._date);
+      newDate.setDate(newDate.getDate() + num);
+      return newDate;
+  }
+
+  // Add weeks to the date (weeks * 7 days)
+  addWeeks(num: number): Date {
+      const newDate = new Date(this._date);
+      newDate.setDate(newDate.getDate() + (num * 7));
+      return newDate;
+  }
+
+  // Add months to the date
+  addMonths(num: number): Date {
+      const newDate = new Date(this._date);
+      newDate.setMonth(newDate.getMonth() + num);
+      return newDate;
+  }
+
+  // Add years to the date
+  addYear(num: number): Date {
+      const newDate = new Date(this._date);
+      newDate.setFullYear(newDate.getFullYear() + num);
+      return newDate;
+  }
+
+  // Get the current date object
+  date(): Date {
+      return this._date;
+  }
+
+  seconds(): number {
+    return this._date.getSeconds();
+  }
+
+  minutes(): number {
+    return this._date.getSeconds();
+  }
+
+  months(): number {
+    return this._date.getSeconds();
+  }
+
+  weeks(): number {
+    return this._date.getSeconds();
+  }
+
+  // Format the date as a string
+  toString(): string {
+      return this._date.toISOString();
+  }
+}
+
+================
+File: src/types/job_model.ts
+================
+export type JobModel = {
+  job_id?: number | bigint;
+  queue_id?: number;
+  job_name: string;
+  parameters?: string; // Or a more specific type if you use JSON
+  status: number; // 0: pending, 1: running, 2: completed, 3: failed, 4: dead
+  scheduled_time?: string;
+  start_time?: string;
+  completion_time?: string;
+  created_at?: string;
+  updated_at?: string;
+  retries: number;
+  max_retries?: number;
+}
+
+================
+File: src/types/queue_model.ts
+================
+export type QueueModel = {
+  queue_id?: number | bigint;
+  name: string;
+  enqueued: number;
+  enqueued_at: string;
+  description?: string;
+  created_at: string;
+}
+
+================
+File: tsconfig.json
+================
+{
+  "compilerOptions": {
+    // Enable latest features
+    "lib": ["ESNext", "DOM"],
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "allowJs": true,
+
+    // Bundler mode
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+
+    // Best practices
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // Some stricter flags (disabled by default)
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noPropertyAccessFromIndexSignature": false
+  }
+}
+
+================
+File: vitest.config.ts
+================
+// file: ./vitest.config.ts
+import { defineConfig } from "vitest/config";
+import { setup, teardown } from "./src/tests/setup";
+
+export default defineConfig({
+    test: {
+        include: ["src/tests/*.test.{js,mjs,cjs,ts,jsx,tsx}"],
+        globalSetup: ["./src/tests/setup.ts"],
+        // reporters: ["default", { async onWatcherRerun() {
+        //     await teardown();
+        //     await setup();
+        // }}]
+    },
+});
+
+
+
+================================================================
+End of Codebase
+================================================================
