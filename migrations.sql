@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS queues (
     description TEXT,
     enqueued BOOLEAN NOT NULL DEFAULT 0,
     enqueued_at DATETIME,
+    priority INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 

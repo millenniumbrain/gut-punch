@@ -1,6 +1,6 @@
 export type JobModel = {
   job_id?: number | bigint;
-  queue_id?: number;
+  queue_id?: number | bigint;
   job_name: string;
   parameters?: string; // Or a more specific type if you use JSON
   status: number; // 0: pending, 1: running, 2: completed, 3: failed, 4: dead

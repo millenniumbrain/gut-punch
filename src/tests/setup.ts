@@ -14,16 +14,16 @@ export async function setup() {
       const migrations = fs.readFileSync(migrationsPath, 'utf-8');
       db.exec(migrations);
       const stmt = db.prepare(`
-        INSERT INTO queues (name, description)
+        INSERT INTO queues (name, description, priority)
         SELECT ?, ?
         WHERE NOT EXISTS (
           SELECT 1 FROM queues WHERE name = ?
         )
       `);
     
-      stmt.run("high", "High priority queue for jobs", "high");
-      stmt.run("default","Default priority queue for jobs");
-      stmt.run("low", "Low priority queue for jobs");
+      stmt.run("high", "High priority queue for jobs", "high", 1);
+      stmt.run("default","Default priority queue for jobs", 2);
+      stmt.run("low", "Low priority queue for jobs", 9999);
       db.close();
       console.log("Database created and migrations applied.");
     } catch {

@@ -72,6 +72,11 @@ export class JobRepository {
     }
   }
 
+  async markJobPending(jobId: number | bigint): Promise<number> {
+    return this.update({ status: JobStatusCodes.PENDING } as JobModel, { job_id: jobId });
+  }
+
+
   async markJobCompleted(jobId: number | bigint): Promise<number> {
     return this.update({ status: JobStatusCodes.COMPLETED } as JobModel, { job_id: jobId });
   }

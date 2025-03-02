@@ -15,7 +15,7 @@ export class QueueRepository {
     const values = Object.values(conditions);
 
     try {
-      const stmt = this._dbConnection.db.prepare(`SELECT * FROM queues ${whereClause ? `WHERE ${whereClause}` : ''}`);
+      const stmt = this._dbConnection.db.prepare(`SELECT * FROM queues ${whereClause ? `WHERE ${whereClause}` : ''} ORDER BY priority ASC`);
       const rows = stmt.all(...values);
       return rows as QueueModel[];
     } catch (error) {
@@ -41,7 +41,7 @@ export class QueueRepository {
 
     try {
       const queueId = this._dbConnection.insert('queues', queueWithTimestamps);
-      return { ...queueWithTimestamps, queue_id: queueId } as QueueModel;
+      return { ...queueWithTimestamps, queue_id: queueId };
     } catch (error) {
       console.error('Error creating queue:', error);
       throw error;
@@ -53,7 +53,7 @@ export class QueueRepository {
     conditions: Record<string, any>
   ): Promise<number> {
     const updateKeys = Object.keys(data);
-    const updateValues = updateKeys.map((key) => data[key as keyof typeof data]);
+    const updateValues = updateKeys.map((key) => (data as Record<string, any>)[key]);
 
     const whereKeys = Object.keys(conditions);
     const whereValues = Object.values(conditions);
